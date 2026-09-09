@@ -162,6 +162,12 @@ attaches them with checksums, and prints the formula block to paste into the tap
 make release VERSION=0.2.0     # tags v0.2.0 and pushes
 ```
 
+`hack/publish.sh` does the whole thing instead — creates or pushes both repos,
+cuts the release, regenerates the tap formula from the checksums of the archives
+that actually landed on it, and then proves `brew install` gives you the version
+you just published. It expects the tap checked out next to this repo, or clones
+it there; `TAP_DIR` overrides that.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
