@@ -1,5 +1,5 @@
 BINARY  := ktui
-VERSION := 0.1.0
+VERSION := 0.1.1
 LDFLAGS := -s -w -X main.version=$(VERSION)
 REPO    := razvanbalsan/ktui
 
