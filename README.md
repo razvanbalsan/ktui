@@ -57,7 +57,8 @@ not through `kubectl`.
 | `/` | filter by name, cluster or server |
 | `esc` | clear selection, then clear filter |
 | `?` | help |
-| `q` | quit |
+| `q` | quit — asks to confirm first |
+| `ctrl+c` | quit immediately, no prompt |
 
 ## What it does that `kubectl config` doesn't
 

@@ -132,7 +132,8 @@ Usage:
 Keys:
   enter  switch context      n  namespaces      r  rename
   d      delete              space  select      /  filter
-  p      re-probe            ?  help            q  quit
+  p      re-probe            ?  help            q  quit (asks first)
+  ctrl+c quit immediately
 
 Deleting a context also removes the cluster and user entries it referenced,
 when no surviving context still points at them. Every write is preceded by a

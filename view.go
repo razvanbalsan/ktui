@@ -94,6 +94,8 @@ func (m model) View() string {
 		return m.viewHelp()
 	case viewConfirmDelete:
 		return m.viewConfirm()
+	case viewConfirmQuit:
+		return m.viewConfirmQuit()
 	case viewNamespaces:
 		return m.viewNamespaces()
 	case viewRename:
@@ -320,16 +322,35 @@ func (m model) statusBar() string {
 		sel += stSubtle.Render(fmt.Sprintf("filter:%q  ", f))
 	}
 
-	keys := []string{
-		stKey.Render("enter") + stSubtle.Render(" switch"),
-		stKey.Render("n") + stSubtle.Render(" ns"),
-		stKey.Render("r") + stSubtle.Render(" rename"),
-		stKey.Render("d") + stSubtle.Render(" delete"),
-		stKey.Render("space") + stSubtle.Render(" select"),
-		stKey.Render("/") + stSubtle.Render(" filter"),
-		stKey.Render("?") + stSubtle.Render(" help"),
+	return sel + m.keyHints(lipgloss.Width(sel), [][2]string{
+		{"enter", "switch"},
+		{"n", "ns"},
+		{"r", "rename"},
+		{"d", "delete"},
+		{"space", "select"},
+		{"/", "filter"},
+		{"q", "quit"},
+		{"?", "help"},
+	})
+}
+
+// keyHints joins as many hints as fit on one line, dropping from the right, so
+// a narrow terminal loses the last hint instead of wrapping the whole bar.
+func (m model) keyHints(used int, hints [][2]string) string {
+	const sep = " · "
+	var parts []string
+	for i, h := range hints {
+		w := lipgloss.Width(h[0]) + 1 + lipgloss.Width(h[1])
+		if i > 0 {
+			w += lipgloss.Width(sep)
+		}
+		if used+w > m.width {
+			break
+		}
+		used += w
+		parts = append(parts, stKey.Render(h[0])+stSubtle.Render(" "+h[1]))
 	}
-	return sel + strings.Join(keys, stSubtle.Render(" · "))
+	return strings.Join(parts, stSubtle.Render(sep))
 }
 
 func (m model) renamePrompt() string {
@@ -381,6 +402,67 @@ func (m model) viewConfirm() string {
 
 	b.WriteString("\n  " + stKey.Render("y") + stSubtle.Render(" confirm   ") +
 		stKey.Render("n") + stSubtle.Render("/") + stKey.Render("esc") + stSubtle.Render(" cancel"))
+
+	return stBox.Width(m.width - 4).Render(b.String())
+}
+
+// fit returns the first phrasing that fits in w cells, so a narrow terminal gets
+// a shorter sentence rather than a wrapped or elided one.
+func fit(w int, variants ...string) string {
+	for _, v := range variants {
+		if lipgloss.Width(v) <= w {
+			return v
+		}
+	}
+	return truncate(variants[len(variants)-1], w)
+}
+
+func (m model) viewConfirmQuit() string {
+	var b strings.Builder
+	b.WriteString(stBoxTitle.Render("Quit ktui?"))
+	b.WriteString("\n\n")
+
+	// The box keeps two columns of padding, so this is what a line has room for.
+	avail := m.width - 12
+	if avail < 8 {
+		avail = 8
+	}
+
+	cur := m.store.CurrentContext()
+	if cur == "" {
+		cur = "(none)"
+	}
+	// "kubectl keeps X as its current context." needs 40 cells around the name;
+	// when the name does not leave that much, give it a line of its own.
+	if avail >= 40+lipgloss.Width(cur) {
+		b.WriteString("  " + stSubtle.Render("kubectl keeps ") + stAccent.Render(cur) +
+			stSubtle.Render(" as its current context.") + "\n")
+	} else {
+		b.WriteString("  " + stSubtle.Render(fit(avail, "current context", "current")) + "\n")
+		b.WriteString("  " + stAccent.Render(truncate(cur, avail)) + "\n")
+	}
+
+	if n := len(m.selected); n > 0 {
+		b.WriteString("  " + stSubtle.Render(fit(avail,
+			fmt.Sprintf("%s will be forgotten.", plural(n, "selected context", "selected contexts")),
+			fmt.Sprintf("%d selected, forgotten on quit.", n),
+			fmt.Sprintf("%d selected.", n))) + "\n")
+	}
+
+	b.WriteString("\n  " + stSubtle.Render(fit(avail,
+		"Nothing is pending: switches, renames and deletes are written as you make them.",
+		"Nothing is pending; every change is already on disk.",
+		"Nothing is pending; changes are already saved.",
+		"Nothing is pending.")) + "\n")
+
+	if avail >= 27 {
+		b.WriteString("\n  " + stKey.Render("y") + stSubtle.Render("/") + stKey.Render("q") +
+			stSubtle.Render("/") + stKey.Render("enter") + stSubtle.Render(" quit   ") +
+			stKey.Render("n") + stSubtle.Render("/") + stKey.Render("esc") + stSubtle.Render(" stay"))
+	} else {
+		b.WriteString("\n  " + stKey.Render("y") + stSubtle.Render(" quit  ") +
+			stKey.Render("n") + stSubtle.Render(" stay"))
+	}
 
 	return stBox.Width(m.width - 4).Render(b.String())
 }
@@ -460,7 +542,8 @@ func (m model) viewHelp() string {
 		{"/", "filter by name, cluster or server"},
 		{"esc", "clear selection, then clear filter"},
 		{"?", "this help"},
-		{"q / ctrl+c", "quit"},
+		{"q", "quit, after a confirmation"},
+		{"ctrl+c", "quit immediately"},
 	}
 
 	var b strings.Builder

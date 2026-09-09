@@ -17,6 +17,7 @@ const (
 	viewList viewMode = iota
 	viewNamespaces
 	viewConfirmDelete
+	viewConfirmQuit
 	viewRename
 	viewHelp
 )
@@ -244,6 +245,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateNamespaces(msg)
 		case viewConfirmDelete:
 			return m.updateConfirm(msg)
+		case viewConfirmQuit:
+			return m.updateConfirmQuit(msg)
 		case viewRename:
 			return m.updateRename(msg)
 		case viewHelp:
@@ -284,7 +287,14 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q":
+		m.prevMode = m.mode
+		m.mode = viewConfirmQuit
+		return m, nil
+
+	case "ctrl+c":
+		// The universal interrupt stays immediate: anyone reaching for it
+		// wants out now, not another prompt.
 		m.quitting = true
 		return m, tea.Quit
 
@@ -435,6 +445,20 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.setStatus(msgTxt, false)
 	case "n", "N", "esc", "q":
 		m.mode = viewList
+	}
+	return m, nil
+}
+
+// updateConfirmQuit answers the quit prompt. A second q confirms, so leaving is
+// still two keystrokes for anyone who knows where they are going, while a single
+// stray q no longer drops the session.
+func (m model) updateConfirmQuit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "q", "enter", "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "n", "N", "esc":
+		m.mode = m.prevMode
 	}
 	return m, nil
 }

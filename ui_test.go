@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -314,7 +315,7 @@ func TestViewSurvivesNarrowTerminals(t *testing.T) {
 	for _, w := range []int{20, 40, 60, 80, 200} {
 		for _, h := range []int{8, 12, 24, 60} {
 			mm := send(t, m, tea.WindowSizeMsg{Width: w, Height: h})
-			for _, mode := range []viewMode{viewList, viewHelp, viewConfirmDelete, viewNamespaces} {
+			for _, mode := range []viewMode{viewList, viewHelp, viewConfirmDelete, viewConfirmQuit, viewNamespaces} {
 				mm.mode = mode
 				mm.plan = mm.store.PlanDelete([]string{"scratch"})
 				if out := mm.View(); out == "" && mode != viewList {
@@ -325,14 +326,70 @@ func TestViewSurvivesNarrowTerminals(t *testing.T) {
 	}
 }
 
-func TestQuitSetsFlag(t *testing.T) {
+func TestQuitAsksBeforeLeaving(t *testing.T) {
 	m, _ := testModel(t)
 	m = send(t, m, runes("q"))
+	if m.quitting {
+		t.Fatal("q alone should not quit")
+	}
+	if m.mode != viewConfirmQuit {
+		t.Fatalf("mode = %v, want viewConfirmQuit", m.mode)
+	}
+	if !strings.Contains(m.View(), "Quit ktui?") {
+		t.Error("the quit prompt should say what it is asking")
+	}
+
+	m = send(t, m, runes("n"))
+	if m.quitting || m.mode != viewList {
+		t.Fatalf("n should return to the list: quitting=%v mode=%v", m.quitting, m.mode)
+	}
+
+	m = send(t, m, special(tea.KeyEsc))
+	if m.mode != viewList {
+		t.Fatal("esc in the list should not open the quit prompt")
+	}
+
+	m = send(t, m, runes("q"), runes("y"))
 	if !m.quitting {
-		t.Error("q should quit")
+		t.Error("q then y should quit")
 	}
 	if m.View() != "" {
 		t.Error("view should be empty once quitting so the alt screen restores cleanly")
+	}
+}
+
+func TestQuitConfirmAcceptsSecondQAndEnter(t *testing.T) {
+	for _, k := range []tea.KeyMsg{runes("q"), special(tea.KeyEnter)} {
+		m, _ := testModel(t)
+		m = send(t, m, runes("q"), k)
+		if !m.quitting {
+			t.Errorf("%v at the quit prompt should quit", k)
+		}
+	}
+}
+
+func TestCtrlCQuitsWithoutAsking(t *testing.T) {
+	m, _ := testModel(t)
+	m = send(t, m, special(tea.KeyCtrlC))
+	if !m.quitting {
+		t.Error("ctrl+c should quit immediately")
+	}
+	if m.mode == viewConfirmQuit {
+		t.Error("ctrl+c should not stop at the confirmation")
+	}
+}
+
+func TestQuitIsAdvertisedAndTheKeyBarFits(t *testing.T) {
+	m, _ := testModel(t)
+	for _, w := range []int{40, 60, 80, 120} {
+		mm := send(t, m, tea.WindowSizeMsg{Width: w, Height: 40})
+		bar := mm.statusBar()
+		if got := lipgloss.Width(bar); got > w {
+			t.Errorf("key bar is %d wide at width %d: %q", got, w, bar)
+		}
+		if w >= 80 && !strings.Contains(bar, "quit") {
+			t.Errorf("key bar at width %d should advertise quit: %q", w, bar)
+		}
 	}
 }
 
